@@ -177,6 +177,7 @@
   }
   .swatch-dot{
     width:11px;height:11px;border-radius:3px;flex:none;
+    box-shadow:inset 0 0 0 1px rgba(0,0,0,0.15);
   }
   .item-row{
     display:flex;
@@ -300,6 +301,12 @@
     font-size:12px;
     color:var(--ink-soft);
     margin-bottom:10px;
+    line-height:1.45;
+  }
+  .manage-block{
+    margin-bottom:10px;
+    padding-bottom:8px;
+    border-bottom:1px dashed var(--line);
   }
   .manage-row{
     display:flex;
@@ -324,6 +331,28 @@
     text-align:center;
     text-transform:uppercase;
   }
+  .manage-sub{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    flex-wrap:wrap;
+    font-size:12px;
+    color:var(--ink-soft);
+    padding-left:17px;
+  }
+  .manage-sub input[type=number]{
+    width:48px;
+    padding:5px 6px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-size:13px;
+    text-align:center;
+  }
+  .manage-sub label.chk{
+    display:flex;
+    align-items:center;
+    gap:4px;
+  }
   .icon-btn{
     background:none;border:1px solid var(--line);border-radius:6px;
     width:26px;height:26px;cursor:pointer;font-size:13px;color:var(--ink-soft);flex:none;
@@ -340,6 +369,77 @@
   .add-section-row button{
     padding:8px 12px;border-radius:6px;border:1px solid var(--ink);background:#fff;font-weight:600;font-size:13px;cursor:pointer;
   }
+  .add-sub{margin-top:8px;padding-left:0;}
+
+  /* clarification pop-up */
+  .modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(35,36,31,0.55);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    z-index:50;
+  }
+  .modal-box{
+    background:var(--paper-raised);
+    border:1px solid var(--ink);
+    border-radius:12px;
+    max-width:480px;
+    width:100%;
+    max-height:88vh;
+    overflow:auto;
+    padding:16px;
+  }
+  .modal-box h2{
+    font-size:16px;
+    margin:0 0 4px;
+  }
+  .modal-note{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    margin-bottom:12px;
+    line-height:1.4;
+  }
+  .problem{
+    border:1px solid var(--line);
+    border-left:4px solid var(--danger);
+    border-radius:8px;
+    background:#fff;
+    padding:9px 10px;
+    margin-bottom:10px;
+  }
+  .problem .read{
+    font-size:12px;
+    color:var(--ink-soft);
+  }
+  .problem .read code{
+    font-size:14px;
+    font-weight:700;
+    color:var(--ink);
+    background:var(--paper);
+    border-radius:4px;
+    padding:1px 5px;
+  }
+  .problem .why{
+    font-size:12.5px;
+    color:var(--danger);
+    margin:4px 0 6px;
+    line-height:1.35;
+  }
+  .problem input{
+    width:100%;
+    padding:8px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-size:14.5px;
+  }
+  .modal-actions{
+    display:flex;
+    gap:8px;
+    margin-top:6px;
+  }
 </style>
 </head>
 <body>
@@ -348,7 +448,7 @@
     <h1>ChipChat</h1>
     <div style="text-align:right;">
       <div class="sub" id="itemCount">0 cards</div>
-      <div class="version-tag">v0.03</div>
+      <div class="version-tag">v0.06</div>
     </div>
   </header>
 
@@ -365,21 +465,63 @@
   var FAMILIES = ["Red","Orange","Yellow","Green","Blue","Purple"];
   var TONES = [["Pure","P"],["Muted","M"],["Shaded","S"],["Neutral","N"]];
   var FAMILY_LETTER = {Red:"R",Orange:"O",Yellow:"Y",Green:"G",Blue:"B",Purple:"P"};
-  var DEFAULT_SECTIONS = [];
+
+  // max1 = highest first number (row), max2 = highest second number (card).
+  // freeform = codes aren't row-card pairs; each number is kept as its own code.
+  var NEW_DEFAULTS = [
+    {name:"Whites", abbr:"W", max1:12, max2:8, freeform:false},
+    {name:"Neutrals", abbr:"B", max1:12, max2:8, freeform:false},
+    {name:"Grays", abbr:"G", max1:12, max2:8, freeform:false}
+  ];
+  // Old Designer Collection (DC) codes now live inside W / B / G.
+  var DC_MAP = {"1-1":"W","1-2":"W","3-1":"W","2-1":"W","4-1":"W","5-2":"B","4-2":"B"};
+  var DC_MAX1 = 5, DC_MAX2 = 2;
+  var DEFAULT_SECTIONS = NEW_DEFAULTS.map(function(s){ return {name:s.name, abbr:s.abbr, max1:s.max1, max2:s.max2, freeform:s.freeform}; });
   FAMILIES.forEach(function(fam){
     TONES.forEach(function(tone){
-      DEFAULT_SECTIONS.push({name: fam + " " + tone[0], abbr: FAMILY_LETTER[fam] + tone[1]});
+      DEFAULT_SECTIONS.push({name: fam + " " + tone[0], abbr: FAMILY_LETTER[fam] + tone[1], max1:8, max2:8, freeform:false});
     });
   });
 
   var state = {
-    sections: DEFAULT_SECTIONS.map(function(s){ return {name:s.name, abbr:s.abbr}; }),
+    sections: DEFAULT_SECTIONS.map(function(s){ return clone(s); }),
     items: [],
     activeSection: null,
-    currentPage: 'order'
+    currentPage: 'order',
+    storeNumber: ''
   };
 
+  function clone(s){ return {name:s.name, abbr:s.abbr, max1:s.max1, max2:s.max2, freeform:!!s.freeform}; }
   function uid(){ return Math.random().toString(36).slice(2,10); }
+
+  function defaultByAbbr(abbr){
+    var up = (abbr||'').toUpperCase();
+    for(var i=0;i<DEFAULT_SECTIONS.length;i++){
+      if(DEFAULT_SECTIONS[i].abbr===up) return DEFAULT_SECTIONS[i];
+    }
+    return null;
+  }
+
+  // Fill in number limits on older saved sections and add any new built-in sections at the front.
+  function normalizeSections(saved){
+    saved = saved.filter(function(s){ return (s.abbr||'').toUpperCase()!=='DC'; });
+    var out = saved.map(function(s){
+      var def = defaultByAbbr(s.abbr) || {};
+      // v0.05: W/B/G second number tops out at 8 (was briefly 12)
+      if(/^[WBG]$/.test((s.abbr||'').toUpperCase()) && s.max2===12) s = {name:s.name, abbr:s.abbr, max1:s.max1, max2:8, freeform:s.freeform};
+      return {
+        name: s.name,
+        abbr: s.abbr,
+        max1: s.max1 || def.max1 || 8,
+        max2: s.max2 || def.max2 || 8,
+        freeform: s.freeform !== undefined ? !!s.freeform : !!def.freeform
+      };
+    });
+    var missing = NEW_DEFAULTS.filter(function(d){
+      return !out.some(function(s){ return s.name===d.name || (s.abbr||'').toUpperCase()===d.abbr; });
+    }).map(clone);
+    return missing.concat(out);
+  }
 
   async function safeGet(key){
     try{
@@ -393,15 +535,28 @@
   }
 
   async function loadState(){
-    var sections = await safeGet('sections-v4');
+    var sections = await safeGet('sections-v5');
+    if(!sections || !sections.length) sections = await safeGet('sections-v4');
     var items = await safeGet('draft-items-v4');
-    if (sections && sections.length) state.sections = sections;
+    if (sections && sections.length) state.sections = normalizeSections(sections);
+    persistSections();
     if (items) state.items = items;
+    // v0.06: Designer Collection section was folded into W/B/G
+    state.items.forEach(function(it){
+      if(it.section==='Designer Collection'){
+        var code = (it.text.match(/(\d)\D*(\d)/)||[]);
+        var target = DC_MAP[code[1]+'-'+code[2]] || 'W';
+        var sec = state.sections.filter(function(s){return s.abbr===target;})[0];
+        if(sec) it.section = sec.name;
+        if(/^DC\d/.test(it.text) && code[1]) it.text = 'DC ' + code[1] + '-' + code[2];
+      }
+    });
+    persistItems();
     if (!state.activeSection && state.sections.length) state.activeSection = state.sections[0].name;
     renderAll();
   }
 
-  function persistSections(){ safeSet('sections-v4', state.sections); }
+  function persistSections(){ safeSet('sections-v5', state.sections); }
   function persistItems(){ safeSet('draft-items-v4', state.items); }
 
   function updateActiveLabel(){
@@ -409,14 +564,14 @@
     if(el) el.textContent = state.activeSection || '—';
   }
 
-  function activeAbbr(){
-    var s = state.sections.filter(function(x){ return x.name===state.activeSection; })[0];
-    return s ? s.abbr : '';
+  function currentSection(){
+    return state.sections.filter(function(x){ return x.name===state.activeSection; })[0] || null;
   }
 
   // ---- hue-based swatch colors ----
   var FAMILY_HUE = {R:2, O:30, Y:46, G:140, B:212, P:280};
   var TONE_STYLE = {P:{s:0.62,l:0.50}, M:{s:0.28,l:0.55}, S:{s:0.55,l:0.30}, N:{s:0.16,l:0.55}};
+  var SPECIAL_SWATCH = {W:'#ece7d6', B:'#a98a6b', G:'#8c9196'};
 
   function hslToHex(h,s,l){
     var c = (1 - Math.abs(2*l - 1)) * s;
@@ -435,6 +590,7 @@
   }
   function swatchColorFor(section){
     var abbr = (section && section.abbr ? section.abbr.toUpperCase() : '');
+    if(SPECIAL_SWATCH.hasOwnProperty(abbr)) return SPECIAL_SWATCH[abbr];
     if(abbr.length >= 2){
       var famLetter = abbr[0];
       var toneLetter = abbr[abbr.length-1];
@@ -450,7 +606,7 @@
     return swatchColorFor(section);
   }
 
-  // ---- fuzzy match for spoken full section names ----
+  // ---- matching spoken words to sections ----
   function normalize(s){
     return s.toLowerCase().replace(/[^a-z0-9 ]/g,'').trim();
   }
@@ -483,19 +639,27 @@
     if(bestScore>0.78) return best;
     return null;
   }
-  function matchSectionByAbbr(compact){
+  function exactAbbr(compact, minLen, maxLen){
     var up = compact.toUpperCase();
     for(var i=0;i<state.sections.length;i++){
-      if(state.sections[i].abbr && state.sections[i].abbr.toUpperCase()===up) return state.sections[i];
+      var a = (state.sections[i].abbr||'').toUpperCase();
+      if(a && a===up && a.length>=minLen && a.length<=maxLen) return state.sections[i];
     }
-    for(var j=0;j<state.sections.length;j++){
-      var abbr = state.sections[j].abbr ? state.sections[j].abbr.toUpperCase() : '';
-      if(abbr && up.length <= abbr.length + 3 && up.indexOf(abbr) !== -1) return state.sections[j];
+    return null;
+  }
+  // Catches dictation autocorrect such as "iOS" for "OS". Two-letter-or-longer abbreviations only.
+  function lenientAbbr(token){
+    var up = token.toUpperCase();
+    if(!/^[AEIOU]/.test(up)) return null;
+    for(var i=0;i<state.sections.length;i++){
+      var a = (state.sections[i].abbr||'').toUpperCase();
+      if(a.length>=2 && up.length===a.length+1 && up.slice(-a.length)===a) return state.sections[i];
     }
     return null;
   }
 
-  var NUM_WORDS = {zero:'0',oh:'0',one:'1',two:'2',three:'3',four:'4',five:'5',six:'6',seven:'7',eight:'8',nine:'9'};
+  var NUM_WORDS = {zero:'0',one:'1',two:'2',three:'3',four:'4',five:'5',six:'6',seven:'7',eight:'8',nine:'9',ten:'10',eleven:'11',twelve:'12'};
+  var IGNORE = {and:1,then:1,next:1,section:1,page:1,okay:1,ok:1,uh:1,um:1,go:1,switch:1,add:1,order:1,dash:1,hyphen:1,minus:1};
 
   function addItem(text){
     var trimmed = text.trim();
@@ -503,73 +667,264 @@
     state.items.push({id:uid(), text:trimmed, qty:1, section: state.activeSection || state.sections[0].name});
   }
 
-  function processDictation(raw){
-    var text = ' ' + raw.toLowerCase() + ' ';
-    Object.keys(NUM_WORDS).forEach(function(w){
-      text = text.replace(new RegExp('\\b'+w+'\\b','g'), NUM_WORDS[w]);
-    });
-    text = text.replace(/\b(dash|hyphen|minus)\b/g, ' ');
-    text = text.replace(/-/g, ' ');
-
-    var runs = text.match(/[a-z]+|[0-9]+/g) || [];
-
-    var letterBuffer = [];
-    var digitBuffer = [];
-
-    function tryResolveLetters(){
-      if(!letterBuffer.length) return;
-      var compact = letterBuffer.join('');
-      var abbrSec = matchSectionByAbbr(compact);
-      if(abbrSec){
-        state.activeSection = abbrSec.name;
-        letterBuffer = [];
+  // Every way to cut a digit string into row,card pairs that respects the section's limits.
+  // Runs the person spoke separately ("12 3") are never glued together into one number.
+  function enumerateParses(runs, max1, max2){
+    var D = runs.join('');
+    var cuts = {};
+    var acc = 0;
+    for(var r=0;r<runs.length-1;r++){ acc += runs[r].length; cuts[acc] = true; }
+    var results = [];
+    function rec(pos, elems){
+      if(results.length >= 200) return;
+      if(pos === D.length){
+        if(elems.length % 2 === 0 && elems.length > 0) results.push(elems.slice());
         return;
       }
-      var phrase = letterBuffer.join(' ');
-      var fuzzy = matchSectionByPhrase(phrase);
-      if(fuzzy){
-        state.activeSection = fuzzy.name;
-        letterBuffer = [];
+      var max = (elems.length % 2 === 0) ? max1 : max2;
+      var maxDigits = String(max).length;
+      if(D[pos] === '0') return;
+      for(var len=1; len<=maxDigits && pos+len<=D.length; len++){
+        var straddles = false;
+        for(var k=pos+1;k<pos+len;k++){ if(cuts[k]) straddles = true; }
+        if(straddles) break;
+        var val = parseInt(D.substr(pos,len),10);
+        if(val>=1 && val<=max){
+          elems.push(val);
+          rec(pos+len, elems);
+          elems.pop();
+        }
       }
     }
+    rec(0, []);
+    return results;
+  }
+  function parseLabel(parse){
+    var parts = [];
+    for(var i=0;i<parse.length;i+=2) parts.push(parse[i] + '-' + parse[i+1]);
+    return parts.join(', ');
+  }
 
-    runs.forEach(function(run){
-      if(/^[0-9]+$/.test(run)){
-        for(var i=0;i<run.length;i++){
-          digitBuffer.push(run[i]);
-          if(digitBuffer.length===2){
-            tryResolveLetters();
-            letterBuffer = [];
-            var abbr = activeAbbr();
-            addItem((abbr?abbr:'') + digitBuffer[0] + '-' + digitBuffer[1]);
-            digitBuffer = [];
-          }
-        }
+  function resolveDigits(sec, runs, problems){
+    if(!sec){
+      problems.push({read: runs.join(' '), reason: 'No section is selected for these numbers.'});
+      return;
+    }
+    if(sec.freeform){
+      runs.forEach(function(run){ addItem((sec.abbr||'') + run); });
+      return;
+    }
+    var parses = enumerateParses(runs, sec.max1, sec.max2);
+    var fragment = (sec.abbr ? sec.abbr + ' ' : '') + runs.join(' ');
+    if(parses.length === 1){
+      var p = parses[0];
+      for(var i=0;i<p.length;i+=2){
+        addItem((sec.abbr||'') + p[i] + '-' + p[i+1]);
+      }
+      return;
+    }
+    if(parses.length === 0){
+      problems.push({
+        read: fragment,
+        reason: 'That doesn’t fit ' + sec.name + ' (first number 1–' + sec.max1 + ', second number 1–' + sec.max2 + ', in pairs). Check for a missed or extra digit.'
+      });
+      return;
+    }
+    var shown = parses.slice(0,3).map(parseLabel);
+    problems.push({
+      read: fragment,
+      reason: 'This could be read more than one way: ' + shown.join('  or  ') + (parses.length>3 ? '  …' : '') + '. Re-enter it with a space or "dash" between the numbers (e.g. 1 12).'
+    });
+  }
+
+  // Designer Collection codes: "DC 4-1" etc. Filed straight into Whites / Neutrals / Grays.
+  function resolveDC(runs, problems){
+    var fragment = 'DC ' + runs.join(' ');
+    var parses = enumerateParses(runs, DC_MAX1, DC_MAX2);
+    if(parses.length !== 1){
+      problems.push({read: fragment, reason: parses.length ? 'Designer Collection code could be read more than one way. Re-enter it as DC 4 1.' : 'That isn\u2019t a Designer Collection code (first number 1\u20135, second number 1\u20132).'});
+      return;
+    }
+    var p = parses[0];
+    for(var i=0;i<p.length;i+=2){
+      var key = p[i] + '-' + p[i+1];
+      var abbr = DC_MAP[key];
+      var sec = abbr && state.sections.filter(function(s){ return s.abbr===abbr; })[0];
+      if(!sec){
+        problems.push({read: 'DC ' + key, reason: 'DC ' + key + ' isn\u2019t in my Designer Collection list (known: ' + Object.keys(DC_MAP).join(', ') + ').'});
+        continue;
+      }
+      state.items.push({id:uid(), text:'DC ' + key, qty:1, section: sec.name});
+    }
+  }
+
+  // Reads a block of dictated text, adds what it understands, and returns a list of problems.
+  function processDictation(raw){
+    var problems = [];
+    var text = ' ' + raw.toLowerCase() + ' ';
+    Object.keys(NUM_WORDS).forEach(function(w){
+      text = text.replace(new RegExp('\\b'+w+'\\b','g'), ' ' + NUM_WORDS[w] + ' ');
+    });
+    var tokens = text.match(/[a-z]+|[0-9]+/g) || [];
+
+    var letterBuf = [];
+    var digitGroup = [];
+    var dcMode = false;
+
+    function setActive(sec){
+      dcMode = false;
+      state.activeSection = sec.name;
+    }
+    function singleExactFor(buf){
+      var compact = buf.join('');
+      return compact.length === 1 ? exactAbbr(compact, 1, 1) : null;
+    }
+    function matchTokens(buf){
+      var compact = buf.join('');
+      if(compact === 'dc') return {dc:true, immediate:true};
+      var s = exactAbbr(compact, 2, 99);
+      if(s) return {section:s, immediate:true};
+      if(compact.length === 1){
+        var one = exactAbbr(compact, 1, 1);
+        if(one) return {section:one, pending:true};
+      }
+      var n = matchSectionByPhrase(buf.join(' '));
+      if(n) return {section:n, immediate:true};
+      if(buf.length === 1){
+        var l = lenientAbbr(buf[0]);
+        if(l) return {section:l, immediate:true};
+      }
+      return null;
+    }
+    function flushDigits(){
+      if(!digitGroup.length) return;
+      if(dcMode) resolveDC(digitGroup, problems);
+      else resolveDigits(currentSection(), digitGroup, problems);
+      digitGroup = [];
+    }
+    function flushLetters(){
+      if(!letterBuf.length) return;
+      var m = matchTokens(letterBuf);
+      if(m && m.dc){
+        dcMode = true;
+      } else if(m){
+        setActive(m.section);
       } else {
-        letterBuffer.push(run);
-        var compact = letterBuffer.join('');
-        var abbrSec = matchSectionByAbbr(compact);
-        if(abbrSec){
-          state.activeSection = abbrSec.name;
-          letterBuffer = [];
-        } else {
-          var phrase = letterBuffer.join(' ');
-          var fuzzy = matchSectionByPhrase(phrase);
-          if(fuzzy){
-            state.activeSection = fuzzy.name;
-            letterBuffer = [];
-          } else if(letterBuffer.length >= 4){
-            letterBuffer = [];
-          }
-        }
+        problems.push({read: letterBuf.join(' '), reason: 'I don’t recognize that as a section name or abbreviation.'});
+      }
+      letterBuf = [];
+    }
+    function handleWord(t){
+      if(IGNORE[t]) return;
+      flushDigits();
+      var tentative = letterBuf.concat([t]);
+      var m = matchTokens(tentative);
+      if(m && m.dc){ dcMode = true; letterBuf = []; return; }
+      if(m && m.immediate){ setActive(m.section); letterBuf = []; return; }
+      if(m && m.pending){ letterBuf = tentative; return; }
+      if(letterBuf.length && singleExactFor(letterBuf)){
+        setActive(singleExactFor(letterBuf));
+        letterBuf = [];
+        handleWord(t);
+        return;
+      }
+      if(tentative.length >= 4){
+        problems.push({read: tentative.join(' '), reason: 'I don’t recognize that as a section name or abbreviation.'});
+        letterBuf = [];
+        return;
+      }
+      letterBuf = tentative;
+    }
+
+    tokens.forEach(function(tok){
+      if(/^[0-9]+$/.test(tok)){
+        flushLetters();
+        digitGroup.push(tok);
+      } else {
+        handleWord(tok);
       }
     });
+    flushLetters();
+    flushDigits();
+    return problems;
+  }
 
-    tryResolveLetters();
-    if(digitBuffer.length===1){
-      var abbr2 = activeAbbr();
-      addItem((abbr2?abbr2:'') + digitBuffer[0] + '-?');
-    }
+  // ---- clarification pop-up ----
+  function showProblemModal(problems){
+    var old = document.getElementById('problemModal');
+    if(old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'problemModal';
+    var box = document.createElement('div');
+    box.className = 'modal-box';
+
+    var h = document.createElement('h2');
+    h.textContent = problems.length === 1 ? 'I need a hand with one entry' : 'I need a hand with ' + problems.length + ' entries';
+    box.appendChild(h);
+    var note = document.createElement('div');
+    note.className = 'modal-note';
+    note.textContent = 'Everything else was added. Fix what I read below (or clear the box to skip it), then tap Add corrected.';
+    box.appendChild(note);
+
+    var inputs = [];
+    problems.forEach(function(p){
+      var wrap = document.createElement('div');
+      wrap.className = 'problem';
+      var read = document.createElement('div');
+      read.className = 'read';
+      read.appendChild(document.createTextNode('I read: '));
+      var code = document.createElement('code');
+      code.textContent = p.read;
+      read.appendChild(code);
+      wrap.appendChild(read);
+      var why = document.createElement('div');
+      why.className = 'why';
+      why.textContent = p.reason;
+      wrap.appendChild(why);
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = p.read;
+      input.setAttribute('aria-label', 'Corrected entry');
+      wrap.appendChild(input);
+      inputs.push(input);
+      box.appendChild(wrap);
+    });
+
+    var actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    var apply = document.createElement('button');
+    apply.className = 'btn primary';
+    apply.textContent = 'Add corrected';
+    var skip = document.createElement('button');
+    skip.className = 'btn ghost';
+    skip.textContent = 'Skip these';
+    actions.appendChild(apply);
+    actions.appendChild(skip);
+    box.appendChild(actions);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    skip.addEventListener('click', function(){ overlay.remove(); });
+    apply.addEventListener('click', function(){
+      overlay.remove();
+      var remaining = [];
+      inputs.forEach(function(inp){
+        var v = inp.value.trim();
+        if(v) remaining = remaining.concat(processDictation(v));
+      });
+      persistItems();
+      refreshAfterChange();
+      if(remaining.length) showProblemModal(remaining);
+    });
+    if(inputs.length) inputs[0].focus();
+  }
+
+  function refreshAfterChange(){
+    updateActiveLabel();
+    renderFlash();
+    document.getElementById('itemCount').textContent = state.items.length + (state.items.length===1?' card':' cards');
   }
 
   // ---- page select ----
@@ -592,6 +947,7 @@
     if(valid.indexOf(state.currentPage) === -1) state.currentPage = 'order';
     sel.value = state.currentPage;
   }
+
   function renderAll(){
     renderPageSelect();
     renderPageContent();
@@ -639,12 +995,12 @@
     panel.className = 'dictate-panel';
     var hint = document.createElement('div');
     hint.className = 'dictate-hint';
-    hint.textContent = 'Core Palette only for now (Red\u2013Purple). Dictate or type freely \u2014 "Blue Pure four one Blue Muted two three" works in one breath, dash optional. Tap Add when done.';
+    hint.textContent = 'Dictate or type freely — “Whites 12 3 Blue Pure 2 3” works in one breath, dash optional. Tap Add when done. Anything I can’t read will pop up for you to fix.';
     panel.appendChild(hint);
 
     var textarea = document.createElement('textarea');
     textarea.id = 'dictateInput';
-    textarea.placeholder = 'Blue Pure four one Blue Muted two three';
+    textarea.placeholder = 'Whites 12 3 Blue Pure 2 3';
     panel.appendChild(textarea);
 
     var actions = document.createElement('div');
@@ -653,7 +1009,7 @@
     addBtn.id = 'addBtn'; addBtn.textContent = 'Add to order';
     var activeLabel = document.createElement('div');
     activeLabel.id = 'activeSectionLabel';
-    activeLabel.innerHTML = 'Filing under: <b id="activeSectionName">' + (state.activeSection || '\u2014') + '</b>';
+    activeLabel.innerHTML = 'Filing under: <b id="activeSectionName"></b>';
     actions.appendChild(addBtn);
     actions.appendChild(activeLabel);
     panel.appendChild(actions);
@@ -666,18 +1022,17 @@
       var raw = textarea.value;
       if(!raw.trim()) return;
       var before = state.items.length;
-      processDictation(raw);
+      var problems = processDictation(raw);
       var added = state.items.length - before;
       persistItems();
-      updateActiveLabel();
       textarea.value = '';
+      refreshAfterChange();
       if(added>0){
         toast.textContent = 'Added ' + added + (added===1?' card.':' cards.');
         toast.style.display = 'block';
         setTimeout(function(){ toast.style.display='none'; }, 2200);
       }
-      renderFlash();
-      document.getElementById('itemCount').textContent = state.items.length + (state.items.length===1?' card':' cards');
+      if(problems.length) showProblemModal(problems);
     });
 
     wrap.appendChild(panel);
@@ -700,7 +1055,7 @@
     wrap.appendChild(actionsRow2);
 
     var copyToast = document.createElement('div');
-    copyToast.id = 'copyToast'; copyToast.textContent = 'Copied \u2014 paste into your order form.';
+    copyToast.id = 'copyToast'; copyToast.textContent = 'Copied — paste into your order form.';
     wrap.appendChild(copyToast);
 
     copyBtn.addEventListener('click', function(){
@@ -730,8 +1085,7 @@
       if(state.items.length && !confirm('Clear all cards in this order? Sections stay as-is.')) return;
       state.items = [];
       persistItems();
-      renderFlash();
-      document.getElementById('itemCount').textContent = '0 cards';
+      refreshAfterChange();
     });
 
     var flashPanel = document.createElement('div');
@@ -739,6 +1093,8 @@
     flashPanel.id = 'flashPanel';
     wrap.appendChild(flashPanel);
     renderFlashInto(flashPanel);
+    // label is filled once the panel is in the DOM
+    setTimeout(updateActiveLabel, 0);
 
     return wrap;
   }
@@ -790,7 +1146,7 @@
       var codes = document.createElement('span');
       codes.className = 'flash-codes';
       codes.textContent = itemsInSection.map(function(it){
-        return it.text + (it.qty>1 ? '\u00d7'+it.qty : '');
+        return it.text + (it.qty>1 ? '×'+it.qty : '');
       }).join(', ');
       line.appendChild(dot);
       line.appendChild(abbr);
@@ -869,7 +1225,7 @@
     var qtyWrap = document.createElement('div');
     qtyWrap.className = 'qty-controls';
     var minus = document.createElement('button');
-    minus.className='qty-btn'; minus.textContent='\u2013';
+    minus.className='qty-btn'; minus.textContent='–';
     minus.addEventListener('click', function(){
       if(item.qty>1){ item.qty--; persistItems(); renderPageContent(); }
     });
@@ -899,7 +1255,7 @@
     row.appendChild(select);
 
     var del = document.createElement('button');
-    del.className='del-btn'; del.textContent='\u2715';
+    del.className='del-btn'; del.textContent='✕';
     del.addEventListener('click', function(){
       state.items = state.items.filter(function(i){ return i.id!==item.id; });
       persistItems();
@@ -911,11 +1267,27 @@
   }
 
   // ---- Add Section page ----
+  function numberInput(value){
+    var n = document.createElement('input');
+    n.type = 'number'; n.min = '1'; n.max = '99'; n.value = value;
+    n.inputMode = 'numeric';
+    return n;
+  }
+  function checkbox(labelText, checked){
+    var lab = document.createElement('label');
+    lab.className = 'chk';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = !!checked;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(labelText));
+    return {label:lab, box:cb};
+  }
+
   function buildManagePage(){
     var wrap = document.createElement('div');
     var hint = document.createElement('div');
     hint.className = 'manage-hint';
-    hint.textContent = 'The abbreviation is what the app looks for (as letters, e.g. "BP") to auto-switch sections. Core Palette only for now \u2014 add others back once ready.';
+    hint.textContent = 'The abbreviation is what the app listens for (e.g. “BP”). The two max numbers set how high the first and second number in a code can go — that is how it splits “123” into 12-3. Free-form sections keep each number as its own code.';
     wrap.appendChild(hint);
 
     var list = document.createElement('div');
@@ -935,12 +1307,29 @@
     addRow.appendChild(addBtn);
     wrap.appendChild(addRow);
 
+    var sub = document.createElement('div');
+    sub.className = 'manage-sub add-sub';
+    sub.appendChild(document.createTextNode('1st max'));
+    var max1 = numberInput(8);
+    sub.appendChild(max1);
+    sub.appendChild(document.createTextNode('2nd max'));
+    var max2 = numberInput(8);
+    sub.appendChild(max2);
+    var ff = checkbox('Free-form', false);
+    sub.appendChild(ff.label);
+    wrap.appendChild(sub);
+
     addBtn.addEventListener('click', function(){
       var name = nameInput.value.trim();
       var abbr = abbrInput.value.trim().toUpperCase();
       if(!name) return;
       if(state.sections.some(function(s){ return s.name===name; })){ nameInput.value=''; abbrInput.value=''; return; }
-      state.sections.push({name:name, abbr:abbr});
+      state.sections.push({
+        name:name, abbr:abbr,
+        max1: parseInt(max1.value,10) || 8,
+        max2: parseInt(max2.value,10) || 8,
+        freeform: ff.box.checked
+      });
       nameInput.value=''; abbrInput.value='';
       persistSections();
       renderPageSelect();
@@ -956,6 +1345,9 @@
   function renderManageList(list){
     list.innerHTML = '';
     state.sections.forEach(function(section, idx){
+      var block = document.createElement('div');
+      block.className = 'manage-block';
+
       var row = document.createElement('div');
       row.className='manage-row';
 
@@ -990,7 +1382,7 @@
       row.appendChild(abbrInput);
 
       var up = document.createElement('button');
-      up.className='icon-btn'; up.textContent='\u2191';
+      up.className='icon-btn'; up.textContent='↑';
       up.disabled = idx===0;
       up.addEventListener('click', function(){
         if(idx===0) return;
@@ -1004,7 +1396,7 @@
       row.appendChild(up);
 
       var down = document.createElement('button');
-      down.className='icon-btn'; down.textContent='\u2193';
+      down.className='icon-btn'; down.textContent='↓';
       down.disabled = idx===state.sections.length-1;
       down.addEventListener('click', function(){
         if(idx===state.sections.length-1) return;
@@ -1018,7 +1410,7 @@
       row.appendChild(down);
 
       var del = document.createElement('button');
-      del.className='icon-btn'; del.textContent='\u2715';
+      del.className='icon-btn'; del.textContent='✕';
       del.addEventListener('click', function(){
         if(state.items.some(function(it){ return it.section===section.name; })){
           alert('Move or delete the cards in "' + section.name + '" first.');
@@ -1032,8 +1424,35 @@
         renderManageList(list);
       });
       row.appendChild(del);
+      block.appendChild(row);
 
-      list.appendChild(row);
+      var sub = document.createElement('div');
+      sub.className = 'manage-sub';
+      sub.appendChild(document.createTextNode('1st max'));
+      var m1 = numberInput(section.max1);
+      m1.addEventListener('change', function(){
+        section.max1 = parseInt(m1.value,10) || 8;
+        m1.value = section.max1;
+        persistSections();
+      });
+      sub.appendChild(m1);
+      sub.appendChild(document.createTextNode('2nd max'));
+      var m2 = numberInput(section.max2);
+      m2.addEventListener('change', function(){
+        section.max2 = parseInt(m2.value,10) || 8;
+        m2.value = section.max2;
+        persistSections();
+      });
+      sub.appendChild(m2);
+      var ff = checkbox('Free-form', section.freeform);
+      ff.box.addEventListener('change', function(){
+        section.freeform = ff.box.checked;
+        persistSections();
+      });
+      sub.appendChild(ff.label);
+      block.appendChild(sub);
+
+      list.appendChild(block);
     });
   }
 
