@@ -1,5 +1,15 @@
 # ChipChat Changelog
 
+## v0.09
+- The app now recognizes common iPhone mishearings of color tone words: "yellow sheet" = Yellow Shaded, "green meat" = Green Muted, "blue pour" = Blue Pure, "natural" = Neutral, and similar. If the family color (Red, Orange, Yellow, Green, Blue, Purple) is clear, an unfamiliar second word is matched by its first letter (S, M, P, N).
+
+## v0.08
+- Fixed the clarification pop-up losing cards. When a section name was misheard (e.g. "Yellow Shaded" came through as something else), the numbers after it were being filed under the previous section, and fixing the name afterward added nothing. Now the pop-up holds the name and its numbers together ("I read: yell oh shay did 1 2 3 4 5 6"); correct the name and every card goes into the right section.
+
+## v0.07
+- Fixed "grey": the app now understands "grey"/"greys" as well as "gray"/"grays" (what the iPhone writes), plus white(s), neutral(s), brown and beige, so these no longer land in the wrong section.
+- Added DC 3-2, filed under Grays.
+
 ## v0.06
 - Designer Collection is no longer its own section. Say "DC" plus the code (e.g. "DC 4 1" or "DC 41") and the card is filed automatically: DC 1-1, 1-2, 2-1, 3-1, 4-1 go to Whites; DC 4-2 and 5-2 go to Neutrals. Cards show as "DC 4-1" in the order. Gray has none.
 - A DC code that isn't on that list pops up the clarification box.
